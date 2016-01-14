@@ -13,8 +13,8 @@ urls = [
     "http://www.tripadvisor.com/Attractions-g189473-Activities-oa60-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html",
     "http://www.tripadvisor.com/Attractions-g189473-Activities-oa90-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html",
 ]
-userId = "tripadvisor_poiscrapper"
 
+features = []
 for url in urls:
     hostname = urlparse(url).hostname
     soup = BeautifulSoup(urlopen(url).read(), "lxml")
@@ -37,13 +37,31 @@ for url in urls:
                 longitude = latlon_arr[1]
                 break
 
-        poi = {
-            "name" : poiname,
-            "url" : fullurl,
-            "location": {"type": "Point", "coordinates": [float(longitude), float(latitude)]},
-            "userId" : userId,
-            "tag" : tags,
-            "ratings" : [],
+        # Each poi -> GeoJSON feature
+        feature = {
+            "type": "Feature",
+            "properties": {
+                "name" : poiname,
+                "url" : fullurl,
+                "tag" : tags,
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [ float(longitude), float(latitude) ]
+            }
         }
+        features.append(feature)
 
-        print json.dumps(poi)
+# Finalize GeoJSON format
+geojson = {
+    "type": "FeatureCollection",
+    "crs": {
+        "type": "name",
+        "properties": {
+            "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+        }
+    },
+    "features": features
+}
+
+print json.dumps(geojson)
