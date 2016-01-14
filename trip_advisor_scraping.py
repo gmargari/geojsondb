@@ -40,12 +40,10 @@ for url in urls:
         poi = {
             "name" : poiname,
             "url" : fullurl,
-            "tags" : tags,
-            "latitude" : latitude,
-            "longitude" : longitude,
+            "location": {"type": "Point", "coordinates": [float(longitude), float(latitude)]},
             "userId" : userId,
+            "tag" : tags,
+            "ratings" : [],
         }
 
         print json.dumps(poi)
-
-
