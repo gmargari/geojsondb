@@ -9,9 +9,63 @@ import re
 
 baseurl_maxpage_list = [
     # base ulr must contain the "-PAGENUMBER-" part. Number next to url is max page number to fetch
-    [ "http://www.tripadvisor.com/Attractions-g189473-PAGENUMBER-Activities-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html", 4, "poi" ],
+    [ "http://www.tripadvisor.com/Attractions-g189473-PAGENUMBER-Activities-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html", 4, "attraction" ],
     [ "http://www.tripadvisor.com/Restaurants-g189473-PAGENUMBER-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html", 20, "restaurant" ],
 ]
+
+#===============================================================================
+# attractionElements ()
+#===============================================================================
+def attractionElements(soup):
+    return soup.select("div.wrap.al_border.attraction_element")
+
+#===============================================================================
+# attractionName ()
+#===============================================================================
+def attractionName(elem):
+    return elem.select("div.property_title")[0].select("a")[0].text
+
+#===============================================================================
+# attractionUrl ()
+#===============================================================================
+def attractionUrl(elem):
+    return elem.select("div.property_title")[0].select("a")[0]['href']
+
+#===============================================================================
+# attractionTags ()
+#===============================================================================
+def attractionTags(elem):
+    try:
+        return [ tag.text for tag in elem.select("div.p13n_reasoning_v2")[0].select("span") ]
+    except:
+        return [ ]
+
+#===============================================================================
+# restaurantElements ()
+#===============================================================================
+def restaurantElements(soup):
+    return soup.select("div.shortSellDetails")
+
+#===============================================================================
+# restaurantName ()
+#===============================================================================
+def restaurantName(elem):
+    return (elem.select("h3.title")[0].select("a")[0].text)
+
+#===============================================================================
+# restaurantUrl ()
+#===============================================================================
+def restaurantUrl(elem):
+    return elem.find_all('h3')[0].find_all('a')[0]['href']
+
+#===============================================================================
+# restaurantTags ()
+#===============================================================================
+def restaurantTags(elem):
+    try:
+        return [ tag.text for tag in elem.select("div.cuisines")[0].find_all('a') ]
+    except:
+        return [ ]
 
 #===============================================================================
 # createGeoJSONFeature ()
@@ -34,8 +88,8 @@ def createGeoJSONFeature(name, url, tags, longitude, latitude, feature_type):
 #===============================================================================
 # getLonLat ()
 #===============================================================================
-def getLonLat(poiurl):
-    soup = BeautifulSoup(urlopen(poiurl).read(), "lxml")
+def getLonLat(url):
+    soup = BeautifulSoup(urlopen(url).read(), "lxml")
     for script in soup.find_all('script'):
         # Match text between "CurrentCenter.png|" and "&language". Will get something like "40.6383,22.94802"
         latlon = re.findall("(?<=CurrentCenter.png\|)(.*)(?=\&language)", script.text)
@@ -47,42 +101,18 @@ def getLonLat(poiurl):
     return -1
 
 #===============================================================================
-# parsePoiPage ()
+# parsePage ()
 #===============================================================================
-def parsePoiPage(soup, urlprefix):
+def parsePage(soup, urlprefix, pagetype, funcGetElements, funcGetName, funcGetUrl, funcGetTags):
     features = []
-    for elem in soup.select("div.wrap.al_border.attraction_element"):
-        fullurl = urlprefix + elem.select("div.property_title")[0].select("a")[0]['href']
-        name = elem.select("div.property_title")[0].select("a")[0].text
-        try:
-            tags = [ tag.text for tag in elem.select("div.p13n_reasoning_v2")[0].select("span") ]
-        except:
-            tags = [ ]
+    for elem in funcGetElements(soup):
+        fullurl = urlprefix + funcGetUrl(elem)
+        name = funcGetName(elem).strip()
+        tags = funcGetTags(elem)
         lonlat = getLonLat(fullurl)
         if (not isinstance(lonlat, list)):
             continue
-        feature = createGeoJSONFeature(name, fullurl, tags, lonlat[0], lonlat[1], "POI")
-        features.append(feature)
-        print "  Parsed: " + fullurl
-
-    return features
-
-#===============================================================================
-# parseRestaurantPage ()
-#===============================================================================
-def parseRestaurantPage(soup, urlprefix):
-    features = []
-    for elem in soup.select("div.shortSellDetails"):
-        fullurl = urlprefix + elem.find_all('h3')[0].find_all('a')[0]['href']
-        name = (elem.select("h3.title")[0].select("a")[0].text).strip()
-        try:
-            tags = [ tag.text for tag in elem.select("div.cuisines")[0].find_all('a') ]
-        except:
-            tags = [ ]
-        lonlat = getLonLat(fullurl)
-        if (not isinstance(lonlat, list)):
-            continue
-        feature = createGeoJSONFeature(name, fullurl, tags, lonlat[0], lonlat[1], "Restaurant")
+        feature = createGeoJSONFeature(name, fullurl, tags, lonlat[0], lonlat[1], pagetype)
         features.append(feature)
         print "  Parsed: " + fullurl
 
@@ -94,7 +124,7 @@ def parseRestaurantPage(soup, urlprefix):
 def main():
     features = []
     for [ baseurl, maxpage, pagetype ] in baseurl_maxpage_list:
-        # trip advisor pages are numbered oa0, oa30, oa60, etc.
+        # tripadvisor url pages are numbered oa0, oa30, oa60, etc.
         for page_inc in range(0, maxpage * 30, 30):
             url = baseurl.replace('PAGENUMBER', 'oa' + str(page_inc))
             print "Base: " + url
@@ -104,10 +134,10 @@ def main():
                 break
             soup = BeautifulSoup(urlopen(url).read(), "lxml")
             urlprefix = "http://" + hostname + "/"
-            if (pagetype == "poi"):
-                page_features = parsePoiPage(soup, urlprefix)
+            if (pagetype == "attraction"):
+                page_features = parsePage(soup, urlprefix, pagetype, attractionElements, attractionName, attractionUrl, attractionTags)
             elif (pagetype == "restaurant"):
-                page_features = parseRestaurantPage(soup, urlprefix)
+                page_features = parsePage(soup, urlprefix, pagetype, restaurantElements, restaurantName, restaurantUrl, restaurantTags)
             if (len(page_features) > 0):
                 features = features + page_features
 
