@@ -14,58 +14,76 @@ baseurl_maxpage_list = [
 ]
 
 #===============================================================================
-# attractionElements ()
+# AttractionParser ()
 #===============================================================================
-def attractionElements(soup):
-    return soup.select("div.wrap.al_border.attraction_element")
+class AttractionParser:
+
+    #===========================================================================
+    # getElements ()
+    #===========================================================================
+    @staticmethod
+    def getElements(soup):
+        return soup.select("div.wrap.al_border.attraction_element")
+
+    #===========================================================================
+    # getName ()
+    #===========================================================================
+    @staticmethod
+    def getName(elem):
+        return elem.select("div.property_title")[0].select("a")[0].text
+
+    #===========================================================================
+    # getUrl ()
+    #===========================================================================
+    @staticmethod
+    def getUrl(elem):
+        return elem.select("div.property_title")[0].select("a")[0]['href']
+
+    #===========================================================================
+    # getTags ()
+    #===========================================================================
+    @staticmethod
+    def getTags(elem):
+        try:
+            return [ tag.text for tag in elem.select("div.p13n_reasoning_v2")[0].select("span") ]
+        except:
+            return [ ]
 
 #===============================================================================
-# attractionName ()
+# RestauranParser ()
 #===============================================================================
-def attractionName(elem):
-    return elem.select("div.property_title")[0].select("a")[0].text
+class RestaurantParser:
 
-#===============================================================================
-# attractionUrl ()
-#===============================================================================
-def attractionUrl(elem):
-    return elem.select("div.property_title")[0].select("a")[0]['href']
+    #===========================================================================
+    # getElements ()
+    #===========================================================================
+    @staticmethod
+    def getElements(soup):
+        return soup.select("div.shortSellDetails")
 
-#===============================================================================
-# attractionTags ()
-#===============================================================================
-def attractionTags(elem):
-    try:
-        return [ tag.text for tag in elem.select("div.p13n_reasoning_v2")[0].select("span") ]
-    except:
-        return [ ]
+    #===========================================================================
+    # getName ()
+    #===========================================================================
+    @staticmethod
+    def getName(elem):
+        return elem.select("h3.title")[0].select("a")[0].text
 
-#===============================================================================
-# restaurantElements ()
-#===============================================================================
-def restaurantElements(soup):
-    return soup.select("div.shortSellDetails")
+    #===========================================================================
+    # getUrl ()
+    #===========================================================================
+    @staticmethod
+    def getUrl(elem):
+        return elem.find_all('h3')[0].find_all('a')[0]['href']
 
-#===============================================================================
-# restaurantName ()
-#===============================================================================
-def restaurantName(elem):
-    return (elem.select("h3.title")[0].select("a")[0].text)
-
-#===============================================================================
-# restaurantUrl ()
-#===============================================================================
-def restaurantUrl(elem):
-    return elem.find_all('h3')[0].find_all('a')[0]['href']
-
-#===============================================================================
-# restaurantTags ()
-#===============================================================================
-def restaurantTags(elem):
-    try:
-        return [ tag.text for tag in elem.select("div.cuisines")[0].find_all('a') ]
-    except:
-        return [ ]
+    #===========================================================================
+    # getTags ()
+    #===========================================================================
+    @staticmethod
+    def getTags(elem):
+        try:
+            return [ tag.text for tag in elem.select("div.cuisines")[0].find_all('a') ]
+        except:
+            return [ ]
 
 #===============================================================================
 # createGeoJSONFeature ()
@@ -103,12 +121,12 @@ def getLonLat(url):
 #===============================================================================
 # parsePage ()
 #===============================================================================
-def parsePage(soup, urlprefix, pagetype, funcGetElements, funcGetName, funcGetUrl, funcGetTags):
+def parsePage(soup, urlprefix, pagetype, parser):
     features = []
-    for elem in funcGetElements(soup):
-        fullurl = urlprefix + funcGetUrl(elem)
-        name = funcGetName(elem).strip()
-        tags = funcGetTags(elem)
+    for elem in parser.getElements(soup):
+        fullurl = urlprefix + parser.getUrl(elem)
+        name = parser.getName(elem).strip()
+        tags = parser.getTags(elem)
         lonlat = getLonLat(fullurl)
         if (not isinstance(lonlat, list)):
             continue
@@ -135,9 +153,9 @@ def main():
             soup = BeautifulSoup(urlopen(url).read(), "lxml")
             urlprefix = "http://" + hostname + "/"
             if (pagetype == "attraction"):
-                page_features = parsePage(soup, urlprefix, pagetype, attractionElements, attractionName, attractionUrl, attractionTags)
+                page_features = parsePage(soup, urlprefix, pagetype, AttractionParser)
             elif (pagetype == "restaurant"):
-                page_features = parsePage(soup, urlprefix, pagetype, restaurantElements, restaurantName, restaurantUrl, restaurantTags)
+                page_features = parsePage(soup, urlprefix, pagetype, RestaurantParser)
             if (len(page_features) > 0):
                 features = features + page_features
 
