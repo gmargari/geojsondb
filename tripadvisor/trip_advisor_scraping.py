@@ -94,7 +94,7 @@ def createGeoJSONFeature(name, url, tags, longitude, latitude, feature_type):
         "properties": {
             "name" : name,
             "url" : url,
-            "tag" : tags,
+            "tags" : tags,
             "type" : feature_type,
         },
         "geometry": {
