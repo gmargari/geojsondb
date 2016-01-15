@@ -7,39 +7,35 @@ import json
 import sys
 import re
 
-urls = [
-    "http://www.tripadvisor.com/Attractions-g189473-Activities-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html",
-    "http://www.tripadvisor.com/Attractions-g189473-Activities-oa30-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html",
-    "http://www.tripadvisor.com/Attractions-g189473-Activities-oa60-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html",
-    "http://www.tripadvisor.com/Attractions-g189473-Activities-oa90-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html",
+baseurl_maxpage_list = [
+    # base ulr must contain the "-PAGENUMBER-" part. Number next to url is max page number to fetch
+    [ "http://www.tripadvisor.com/Attractions-g189473-PAGENUMBER-Activities-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html", 4, "poi" ],
+    [ "http://www.tripadvisor.com/Restaurants-g189473-PAGENUMBER-Thessaloniki_Thessaloniki_Region_Central_Macedonia.html", 20, "restaurant" ],
 ]
 
 #===============================================================================
-# getPoiName ()
+# createGeoJSONFeature ()
 #===============================================================================
-def getPoiName(elem):
-    return elem.select("div.property_title")[0].select("a")[0].text
-
-#===============================================================================
-# getUrl ()
-#===============================================================================
-def getUrl(elem, baseurl):
-    urlsuffix = elem.select("div.property_title")[0].select("a")[0]['href']
-    return baseurl + "/" + urlsuffix
-
-#===============================================================================
-# getTags ()
-#===============================================================================
-def getTags(elem):
-    return [ tag.text for tag in elem.select("div.p13n_reasoning_v2")[0].select("span") ]
+def createGeoJSONFeature(name, url, tags, longitude, latitude, feature_type):
+    return {
+        "type": "Feature",
+        "properties": {
+            "name" : name,
+            "url" : url,
+            "tag" : tags,
+            "type" : feature_type,
+        },
+        "geometry": {
+            "type": "Point",
+            "coordinates": [ float(longitude), float(latitude) ]
+        }
+    }
 
 #===============================================================================
 # getLonLat ()
 #===============================================================================
 def getLonLat(poiurl):
-    # Get javascript
     soup = BeautifulSoup(urlopen(poiurl).read(), "lxml")
-    # Find element that contains the "CurrentCenter.png" and lat,lon
     for script in soup.find_all('script'):
         # Match text between "CurrentCenter.png|" and "&language". Will get something like "40.6383,22.94802"
         latlon = re.findall("(?<=CurrentCenter.png\|)(.*)(?=\&language)", script.text)
@@ -51,37 +47,69 @@ def getLonLat(poiurl):
     return -1
 
 #===============================================================================
+# parsePoiPage ()
+#===============================================================================
+def parsePoiPage(soup, urlprefix):
+    features = []
+    for elem in soup.select("div.wrap.al_border.attraction_element"):
+        fullurl = urlprefix + elem.select("div.property_title")[0].select("a")[0]['href']
+        name = elem.select("div.property_title")[0].select("a")[0].text
+        try:
+            tags = [ tag.text for tag in elem.select("div.p13n_reasoning_v2")[0].select("span") ]
+        except:
+            tags = [ ]
+        lonlat = getLonLat(fullurl)
+        if (not isinstance(lonlat, list)):
+            continue
+        feature = createGeoJSONFeature(name, fullurl, tags, lonlat[0], lonlat[1], "POI")
+        features.append(feature)
+        print "  Parsed: " + fullurl
+
+    return features
+
+#===============================================================================
+# parseRestaurantPage ()
+#===============================================================================
+def parseRestaurantPage(soup, urlprefix):
+    features = []
+    for elem in soup.select("div.shortSellDetails"):
+        fullurl = urlprefix + elem.find_all('h3')[0].find_all('a')[0]['href']
+        name = (elem.select("h3.title")[0].select("a")[0].text).strip()
+        try:
+            tags = [ tag.text for tag in elem.select("div.cuisines")[0].find_all('a') ]
+        except:
+            tags = [ ]
+        lonlat = getLonLat(fullurl)
+        if (not isinstance(lonlat, list)):
+            continue
+        feature = createGeoJSONFeature(name, fullurl, tags, lonlat[0], lonlat[1], "Restaurant")
+        features.append(feature)
+        print "  Parsed: " + fullurl
+
+    return features
+
+#===============================================================================
 # main ()
 #===============================================================================
 def main():
     features = []
-    for url in urls:
-        hostname = urlparse(url).hostname
-        soup = BeautifulSoup(urlopen(url).read(), "lxml")
-        for elem in soup.select("div.wrap.al_border.attraction_element"):
-            poiname = getPoiName(elem)
-            fullurl = getUrl(elem, "http://" + hostname)
-            tags = getTags(elem)
-            lonlat = getLonLat(fullurl)
-            if (not isinstance(lonlat, list)):
-                continue
-            longitude = lonlat[0]
-            latitude = lonlat[1]
-
-            # Each poi -> GeoJSON feature
-            feature = {
-                "type": "Feature",
-                "properties": {
-                    "name" : poiname,
-                    "url" : fullurl,
-                    "tag" : tags,
-                },
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [ float(longitude), float(latitude) ]
-                }
-            }
-            features.append(feature)
+    for [ baseurl, maxpage, pagetype ] in baseurl_maxpage_list:
+        # trip advisor pages are numbered oa0, oa30, oa60, etc.
+        for page_inc in range(0, maxpage * 30, 30):
+            url = baseurl.replace('PAGENUMBER', 'oa' + str(page_inc))
+            print "Base: " + url
+            try:
+                hostname = urlparse(url).hostname
+            except:
+                break
+            soup = BeautifulSoup(urlopen(url).read(), "lxml")
+            urlprefix = "http://" + hostname + "/"
+            if (pagetype == "poi"):
+                page_features = parsePoiPage(soup, urlprefix)
+            elif (pagetype == "restaurant"):
+                page_features = parseRestaurantPage(soup, urlprefix)
+            if (len(page_features) > 0):
+                features = features + page_features
 
     # Finalize GeoJSON format
     geojson = {
@@ -94,7 +122,6 @@ def main():
         },
         "features": features
     }
-
     print json.dumps(geojson, sort_keys=True)
 
 if __name__ == "__main__":
