@@ -124,13 +124,16 @@ def getLonLat(url):
 def parsePage(soup, urlprefix, pagetype, parser):
     features = []
     for elem in parser.getElements(soup):
-        fullurl = urlprefix + parser.getUrl(elem)
-        name = parser.getName(elem).strip()
-        tags = parser.getTags(elem)
-        lonlat = getLonLat(fullurl)
-        if (not isinstance(lonlat, list)):
+        try:
+            fullurl = urlprefix + parser.getUrl(elem)
+            name = parser.getName(elem).strip()
+            tags = parser.getTags(elem)
+            lonlat = getLonLat(fullurl)
+            longitude = lonlat[0]
+            latitude = lonlat[1]
+        except:
             continue
-        feature = createGeoJSONFeature(name, fullurl, tags, lonlat[0], lonlat[1], pagetype)
+        feature = createGeoJSONFeature(name, fullurl, tags, longitude, latitude, pagetype)
         features.append(feature)
         print "  Parsed: " + fullurl
 
